@@ -31,8 +31,8 @@ import six
 from six.moves import cStringIO as StringIO
 import tensorflow as tf
 
-from magenta.models.sketch_rnn import model as sketch_rnn_model
-from magenta.models.sketch_rnn import utils
+import sketch_rnn.model as sketch_rnn_model
+import sketch_rnn.utils as utils
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -80,7 +80,15 @@ def load_model(model_dir):
   """Loads model for inference mode, used in jupyter notebook."""
   model_params = sketch_rnn_model.get_default_hparams()
   with tf.gfile.Open(os.path.join(model_dir, 'model_config.json'), 'r') as f:
-    model_params.parse_json(f.read())
+    import json
+    params_dict = json.load(f)
+
+    for k in ['conditional', 'is_training', 'use_input_dropout', 'use_output_dropout', 'use_recurrent_dropout']:
+      params_dict[k] = bool(params_dict[k])
+
+    fixed_json = json.dumps(params_dict)
+
+    model_params.parse_json(fixed_json)
 
   model_params.batch_size = 1  # only sample one at a time
   eval_model_params = sketch_rnn_model.copy_hparams(model_params)
@@ -136,10 +144,11 @@ def load_dataset(data_dir, model_params, inference_mode=False):
       response = requests.get(data_filepath)
       data = np.load(StringIO(response.content))
     else:
-      if six.PY3:
-        data = np.load(data_filepath, encoding='latin1')
-      else:
-        data = np.load(data_filepath)
+      with tf.gfile.FastGFile(data_filepath) as f:
+        if six.PY3:
+          data = np.load(f, encoding='latin1')
+        else:
+          data = np.load(f)
     tf.logging.info('Loaded {}/{}/{} from {}'.format(
         len(data['train']), len(data['valid']), len(data['test']),
         dataset))
